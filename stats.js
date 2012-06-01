@@ -51,6 +51,11 @@ function flushMetrics() {
     for (key in metrics.timers) {
       metrics.timers[key] = [];
     }
+
+    // Clear the timers
+    for (key in metrics.gauges) {
+      metrics.gauges[key] = [];
+    }
   });
 
   // Flush metrics to each backend.
@@ -117,7 +122,10 @@ config.configFile(process.argv[2], function (config, oldConfig) {
           }
           timers[key].push(Number(fields[0] || 0));
         } else if (fields[1].trim() == "g") {
-          gauges[key] = Number(fields[0] || 0);
+          if (! gauges[key]) {
+            gauges[key] = [];
+          }
+          gauges[key].push(Number(fields[0] || 0));
         } else {
           if (fields[2] && fields[2].match(/^@([\d\.]+)/)) {
             sampleRate = Number(fields[2].match(/^@([\d\.]+)/)[1]);
