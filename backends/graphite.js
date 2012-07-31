@@ -23,6 +23,8 @@ var graphitePort;
 var graphiteStats = {};
 
 var post_stats = function graphite_post_stats(statString) {
+  var last_flush = graphiteStats.last_flush || 0;
+  var last_exception = graphiteStats.last_exception || 0;
   if (graphiteHost) {
     try {
       var graphite = net.createConnection(graphitePort, graphiteHost);
@@ -32,6 +34,9 @@ var post_stats = function graphite_post_stats(statString) {
         }
       });
       graphite.on('connect', function() {
+        var ts = Math.round(new Date().getTime() / 1000);
+        statString += 'stats.statsd.graphiteStats.last_exception ' + last_exception + ' ' + ts + "\n";
+        statString += 'stats.statsd.graphiteStats.last_flush ' + last_flush + ' ' + ts + "\n";
         this.write(statString);
         this.end();
         graphiteStats.last_flush = Math.round(new Date().getTime() / 1000);
@@ -46,6 +51,7 @@ var post_stats = function graphite_post_stats(statString) {
 }
 
 var flush_stats = function graphite_flush(ts, metrics) {
+  var starttime = Date.now();
   var statString = '';
   var numStats = 0;
   var key;
@@ -65,19 +71,72 @@ var flush_stats = function graphite_flush(ts, metrics) {
     numStats += 1;
   }
 
-  var timer_avg_string = construct_averaged_message(ts, timers, "timers", pctThreshold);
-  if (timer_avg_string != "") {
-    statString += timer_avg_string;
-    numStats += 1;
+  for (key in timers) {
+    if (timers[key].length > 0) {
+      var values = timers[key].sort(function (a,b) { return a-b; });
+      var count = values.length;
+      var min = values[0];
+      var max = values[count - 1];
+
+      var cumulativeValues = [min];
+      for (var i = 1; i < count; i++) {
+          cumulativeValues.push(values[i] + cumulativeValues[i-1]);
+      }
+
+      var sum = min;
+      var mean = min;
+      var maxAtThreshold = max;
+
+      var message = "";
+
+      var key2;
+
+      for (key2 in pctThreshold) {
+        var pct = pctThreshold[key2];
+        if (count > 1) {
+          var thresholdIndex = Math.round(((100 - pct) / 100) * count);
+          var numInThreshold = count - thresholdIndex;
+
+          maxAtThreshold = values[numInThreshold - 1];
+          sum = cumulativeValues[numInThreshold - 1];
+          mean = sum / numInThreshold;
+        }
+
+        var clean_pct = '' + pct;
+        clean_pct.replace('.', '_');
+        message += 'stats.timers.' + key + '.mean_'  + clean_pct + ' ' + mean           + ' ' + ts + "\n";
+        message += 'stats.timers.' + key + '.upper_' + clean_pct + ' ' + maxAtThreshold + ' ' + ts + "\n";
+        message += 'stats.timers.' + key + '.sum_' + clean_pct + ' ' + sum + ' ' + ts + "\n";
+      }
+
+      sum = cumulativeValues[count-1];
+      mean = sum / count;
+
+      var sumOfDiffs = 0;
+      for (var i = 0; i < count; i++) {
+         sumOfDiffs += (values[i] - mean) * (values[i] - mean);
+      }
+      var stddev = Math.sqrt(sumOfDiffs / count);
+
+      message += 'stats.timers.' + key + '.std ' + stddev  + ' ' + ts + "\n";
+      message += 'stats.timers.' + key + '.upper ' + max   + ' ' + ts + "\n";
+      message += 'stats.timers.' + key + '.lower ' + min   + ' ' + ts + "\n";
+      message += 'stats.timers.' + key + '.count ' + count + ' ' + ts + "\n";
+      message += 'stats.timers.' + key + '.sum ' + sum  + ' ' + ts + "\n";
+      message += 'stats.timers.' + key + '.mean ' + mean + ' ' + ts + "\n";
+      statString += message;
+
+      numStats += 1;
+    }
   }
 
-  var gauge_avg_string = construct_averaged_message(ts, gauges, "gauges", pctThreshold);
-  if (gauge_avg_string != "") {
-    statString += gauge_avg_string;
+  for (key in gauges) {
+    statString += 'stats.gauges.' + key + ' ' + gauges[key] + ' ' + ts + "\n";
     numStats += 1;
   }
 
   statString += 'statsd.numStats ' + numStats + ' ' + ts + "\n";
+  statString += 'stats.statsd.graphiteStats.calculationtime ' + (Date.now() - starttime) + ' ' + ts + "\n";
   post_stats(statString);
 };
 
@@ -102,50 +161,3 @@ exports.init = function graphite_init(startup_time, config, events) {
 
   return true;
 };
-
-function construct_averaged_message(ts, value_array, type_name, pctThreshold) {
-  var message = "";
-  var key;
-
-  for (key in value_array) {
-    if (value_array[key].length > 0) {
-      var values = value_array[key].sort(function (a,b) { return a-b; });
-      var count = values.length;
-      var min = values[0];
-      var max = values[count - 1];
-
-      var mean = min;
-      var maxAtThreshold = max;
-
-      var key2;
-
-      for (key2 in pctThreshold) {
-        var pct = pctThreshold[key2];
-        if (count > 1) {
-          var thresholdIndex = Math.round(((100 - pct) / 100) * count);
-          var numInThreshold = count - thresholdIndex;
-          var pctValues = values.slice(0, numInThreshold);
-          maxAtThreshold = pctValues[numInThreshold - 1];
-
-          // average the remaining timings
-          var sum = 0;
-          for (var i = 0; i < numInThreshold; i++) {
-            sum += pctValues[i];
-          }
-
-          mean = sum / numInThreshold;
-        }
-
-        var clean_pct = '' + pct;
-        clean_pct.replace('.', '_');
-        message += 'stats.' + type_name + '.' + key + '.mean_'  + clean_pct + ' ' + mean           + ' ' + ts + "\n";
-        message += 'stats.' + type_name + '.' + key + '.upper_' + clean_pct + ' ' + maxAtThreshold + ' ' + ts + "\n";
-      }
-
-      message += 'stats.' + type_name + '.' + key + '.upper ' + max   + ' ' + ts + "\n";
-      message += 'stats.' + type_name + '.' + key + '.lower ' + min   + ' ' + ts + "\n";
-      message += 'stats.' + type_name + '.' + key + '.count ' + count + ' ' + ts + "\n";
-    }
-  }
-  return message;
-}

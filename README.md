@@ -16,7 +16,8 @@ Concepts
   Each stat is in its own "bucket". They are not predefined anywhere. Buckets can be named anything that will translate to Graphite (periods make folders, etc)
 
 * *values*
-  Each stat will have a value. How it is interpreted depends on modifiers
+  Each stat will have a value. How it is interpreted depends on modifiers. In
+general values should be integer.
 
 * *flush*
   After the flush interval timeout (default 10 seconds), stats are
@@ -35,14 +36,17 @@ Timing
 
     glork:320|ms
 
-The glork took 320ms to complete this time. StatsD figures out 90th percentile, average (mean), lower and upper bounds for the flush interval.  The percentile threshold can be tweaked with `config.percentThreshold`.
+The glork took 320ms to complete this time. StatsD figures out 90th percentile,
+average (mean), lower and upper bounds for the flush interval.  The percentile
+threshold can be tweaked with `config.percentThreshold`.
 
-The percentile threshold can be a single value, or a list of values, and will generate the following list of stats for each threshold:
+The percentile threshold can be a single value, or a list of values, and will
+generate the following list of stats for each threshold:
 
-    stats.timers.$KEY.mean_$PCT
-    stats.timers.$KEY.upper_$PCT
+    stats.timers.$KEY.mean_$PCT stats.timers.$KEY.upper_$PCT
 
-Where `$KEY` is the key you stats key you specify when sending to statsd, and `$PCT` is the percentile threshold.
+Where `$KEY` is the key you stats key you specify when sending to statsd, and
+`$PCT` is the percentile threshold.
 
 Sampling
 --------
@@ -56,6 +60,9 @@ Gauges
 StatsD now also supports gauges, arbitrary values, which can be recorded.
 
     gaugor:333|g
+
+All metrics can also be batch send in a single UDP packet, separated by a
+newline character.
 
 Debugging
 ---------
@@ -84,6 +91,8 @@ StatsD includes the following backends:
 * [Graphite][graphite] (`graphite`): Graphite is an open-source
   time-series data store that provides visualization through a
   web-browser interface.
+* Console (`console`): The console backend outputs the received
+  metrics to stdout (e.g. for seeing what's going on during development).
 
 By default, the `graphite` backend will be loaded automatically. To
 select which backends are loaded, set the `backends` configuration
@@ -98,20 +107,52 @@ giving the relative path (e.g. `./backends/graphite`).
 Graphite Schema
 ---------------
 
-Graphite uses "schemas" to define the different round robin datasets it houses (analogous to RRAs in rrdtool). Here's what Etsy is using for the stats databases:
+Graphite uses "schemas" to define the different round robin datasets it houses (analogous to RRAs in rrdtool). Here's an example for the stats databases:
 
+In conf/storage-schemas.conf:
+ 
     [stats]
-    priority = 110
     pattern = ^stats\..*
     retentions = 10:2160,60:10080,600:262974
 
-That translates to:
+In conf/storage-aggregation.conf: 
+
+    [min]
+    pattern = \.min$
+    xFilesFactor = 0.1 
+    aggregationMethod = min 
+
+    [max]
+    pattern = \.max$
+    xFilesFactor = 0.1 
+    aggregationMethod = max 
+
+    [sum]
+    pattern = \.count$
+    xFilesFactor = 0 
+    aggregationMethod = sum 
+
+    [default_average]
+    pattern = .*
+    xFilesFactor = 0.3 
+    aggregationMethod = average
+
+This translates to:
 
 * 6 hours of 10 second data (what we consider "near-realtime")
 * 1 week of 1 minute data
 * 5 years of 10 minute data
+* For databases with 'min' or 'max' in the name, keep only the minimum and maximum value when rolling up data and store a None if less than 10% of the datapoints were received
+* For databases with 'count' in the name, add all the values together, and store only a None if none of the datapoints were received
+* For all other databases, average the values (mean) when rolling up data, and store a None if less than 30% of the datapoints were received 
 
-This has been a good tradeoff so far between size-of-file (round robin databases are fixed size) and data we care about. Each "stats" database is about 3.2 megs with these retentions.
+(Note: Newer versions of Graphite can take human readable time formats like 10s:6h,1min:7d,10min:5y)
+
+Retentions and aggregations are read from the file in order, the first pattern that matches is used.  This is set when the database is first created, changing these config files will not change databases that have already been created.  To view or alter the settings on existing files, use whisper-info.py and whisper-resize.py included with the Whisper package. 
+
+These settings have been a good tradeoff so far between size-of-file (round robin databases are fixed size) and data we care about. Each "stats" database is about 3.2 megs with these retentions.  
+
+Many users have been confused to see their hit counts averaged, missing when the data is intermittent, or never stored when statsd is sending at a different interval than graphite expects.  Storage aggregation settings will help you control this and understand what Graphite is doing internally with your data. 
 
 TCP Stats Interface
 -------------------
@@ -219,6 +260,11 @@ Inspiration
 StatsD was inspired (heavily) by the project (of the same name) at Flickr. Here's a post where Cal Henderson described it in depth:
 [Counting and timing](http://code.flickr.com/blog/2008/10/27/counting-timing/). Cal re-released the code recently: [Perl StatsD](https://github.com/iamcal/Flickr-StatsD)
 
+Meta
+---------
+- IRC channel: `#statsd` on freenode
+- Mailing list: `statsd@librelist.com`
+
 
 Contribute
 ---------------------
@@ -236,6 +282,7 @@ fork StatsD from here: http://github.com/etsy/statsd
 
 We'll do our best to get your changes in!
 
+
 [graphite]: http://graphite.wikidot.com
 [etsy]: http://www.etsy.com
 [blog post]: http://codeascraft.etsy.com/2011/02/15/measure-anything-measure-everything/
@@ -248,4 +295,4 @@ Contributors
 -----------------
 
 In lieu of a list of contributors, check out the commit history for the project:
-http://github.com/etsy/statsd/commits/master
+https://github.com/etsy/statsd/graphs/contributors

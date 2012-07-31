@@ -34,16 +34,17 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
+import java.util.Locale;
 import java.util.Random;
 
 import org.apache.log4j.Logger;
 
 public class StatsdClient {
-	private static Random RNG = new Random();
-	private static Logger log = Logger.getLogger(StatsdClient.class.getName());
+	private static final Random RNG = new Random();
+	private static final Logger log = Logger.getLogger(StatsdClient.class.getName());
 
-	private InetSocketAddress _address;
-	private DatagramChannel _channel;
+	private final InetSocketAddress _address;
+	private final DatagramChannel _channel;
 
 	public StatsdClient(String host, int port) throws UnknownHostException, IOException {
 		this(InetAddress.getByName(host), port);
@@ -59,7 +60,7 @@ public class StatsdClient {
 	}
 
 	public boolean timing(String key, int value, double sampleRate) {
-		return send(sampleRate, String.format("%s:%d|ms", key, value));
+		return send(sampleRate, String.format(Locale.ENGLISH, "%s:%d|ms", key, value));
 	}
 
 	public boolean decrement(String key) {
@@ -98,19 +99,24 @@ public class StatsdClient {
 	}
 
 	public boolean increment(String key, int magnitude, double sampleRate) {
-		String stat = String.format("%s:%s|c", key, magnitude);
-		return send(stat, sampleRate);
+		String stat = String.format(Locale.ENGLISH, "%s:%s|c", key, magnitude);
+		return send(sampleRate, stat);
 	}
 
 	public boolean increment(int magnitude, double sampleRate, String... keys) {
 		String[] stats = new String[keys.length];
 		for (int i = 0; i < keys.length; i++) {
-			stats[i] = String.format("%s:%s|c", keys[i], magnitude);
+			stats[i] = String.format(Locale.ENGLISH, "%s:%s|c", keys[i], magnitude);
 		}
 		return send(sampleRate, stats);
 	}
 
-	private boolean send(String stat, double sampleRate) {
+	public boolean gauge(String key, int magnitude){
+		return gauge(key, magnitude, 1.0);
+	}
+	
+	public boolean gauge(String key, int magnitude, double sampleRate){
+		final String stat = String.format(Locale.ENGLISH, "%s:%s|g", key, magnitude);
 		return send(sampleRate, stat);
 	}
 
@@ -120,7 +126,7 @@ public class StatsdClient {
 		if (sampleRate < 1.0) {
 			for (String stat : stats) {
 				if (RNG.nextDouble() <= sampleRate) {
-					stat = String.format("%s|@%f", stat, sampleRate);
+					stat = String.format(Locale.ENGLISH, "%s|@%f", stat, sampleRate);
 					if (doSend(stat)) {
 						retval = true;
 					}
@@ -147,7 +153,7 @@ public class StatsdClient {
 				return true;
 			} else {
 				log.error(String.format(
-						"Could not send entirely stat %s to host %s:%d. Only sent %i bytes out of %i bytes", stat,
+						"Could not send entirely stat %s to host %s:%d. Only sent %d bytes out of %d bytes", stat,
 						_address.getHostName(), _address.getPort(), nbSentBytes, data.length));
 				return false;
 			}
