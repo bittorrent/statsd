@@ -1,7 +1,7 @@
 StatsD Example Clients
 ======================
 
-Here's a bunch of example code contributed by the communinty for interfacing with statsd in a variety of languages.
+Here's a bunch of example code contributed by the community for interfacing with statsd in a variety of languages.
 
     Etsy/StatsD.pm    - perl module
     perl-example.pl   - perl using Etsy/StatsD module
@@ -16,6 +16,6 @@ Here's a bunch of example code contributed by the communinty for interfacing wit
 Third Party StatsD Libraries
 ============================
 
-   PERL: [Net::StatsD](https://github.com/cosimo/perl5-net-statsd/)
+Client libraries have been written for various languages, and are listed on the [Wiki](https://github.com/etsy/statsd/wiki).
 
 Thankyou to all the contributors!
