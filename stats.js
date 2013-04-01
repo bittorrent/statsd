@@ -19,7 +19,7 @@ var sets = {};
 var counter_rates = {};
 var timer_data = {};
 var pctThreshold = null;
-var debugInt, flushInterval, keyFlushInt, server, mgmtServer;
+var flushInterval, keyFlushInt, server, mgmtServer;
 var startup_time = Math.round(new Date().getTime() / 1000);
 var backendEvents = new events.EventEmitter();
 
@@ -59,6 +59,17 @@ function flushMetrics() {
 
   // After all listeners, reset the stats
   backendEvents.once('flush', function clear_metrics(ts, metrics) {
+    // TODO: a lot of this should be moved up into an init/constructor so we don't have to do it every
+    // single flushInterval....
+    // allows us to flag all of these on with a single config but still override them individually
+    conf.deleteIdleStats = conf.deleteIdleStats !== undefined ? conf.deleteIdleStats : false;
+    if (conf.deleteIdleStats) {
+      conf.deleteCounters = conf.deleteCounters !== undefined ? conf.deleteCounters : true;
+      conf.deleteTimers = conf.deleteTimers !== undefined ? conf.deleteTimers : true;
+      conf.deleteSets = conf.deleteSets !== undefined ? conf.deleteSets : true;
+      conf.deleteGauges = conf.deleteGauges !== undefined ? conf.deleteGauges : true;
+    }
+
     // Clear the counters
     conf.deleteCounters = conf.deleteCounters || false;
     for (var counter_key in metrics.counters) {
@@ -74,14 +85,33 @@ function flushMetrics() {
     }
 
     // Clear the timers
+    conf.deleteTimers = conf.deleteTimers || false;
     for (var timer_key in metrics.timers) {
-      metrics.timers[timer_key] = [];
-      metrics.timer_counters[timer_key] = 0;
+      if (conf.deleteTimers) {
+        delete(metrics.timers[timer_key]);
+        delete(metrics.timer_counters[timer_key]);
+      } else {
+        metrics.timers[timer_key] = [];
+        metrics.timer_counters[timer_key] = 0;
+     }
     }
 
     // Clear the sets
+    conf.deleteSets = conf.deleteSets || false;
     for (var set_key in metrics.sets) {
-      metrics.sets[set_key] = new set.Set();
+      if (conf.deleteSets) {
+        delete(metrics.sets[set_key]);
+      } else {
+        metrics.sets[set_key] = new set.Set();
+      }
+    }
+
+	// normally gauges are not reset.  so if we don't delete them, continue to persist previous value
+    conf.deleteGauges = conf.deleteGauges || false;
+    if (conf.deleteGauges) {
+      for (var gauge_key in metrics.gauges) {
+        delete(metrics.gauges[gauge_key]);
+      }
     }
   });
 
@@ -103,34 +133,17 @@ var l;
 
 config.configFile(process.argv[2], function (config, oldConfig) {
   conf = config;
-  if (! config.debug && debugInt) {
-    clearInterval(debugInt);
-    debugInt = false;
-  }
-
   l = new logger.Logger(config.log || {});
 
-  if (config.debug) {
-    if (debugInt !== undefined) {
-      clearInterval(debugInt);
-    }
-    debugInt = setInterval(function () {
-      l.log("\nCounters:\n" + util.inspect(counters) +
-               "\nTimers:\n" + util.inspect(timers) +
-               "\nSets:\n" + util.inspect(sets) +
-               "\nGauges:\n" + util.inspect(gauges), 'DEBUG');
-    }, config.debugInterval || 10000);
-  }
-
   // setup config for stats prefix
-  prefixStats       = config.prefixStats;
-  prefixStats     = prefixStats !== undefined ? prefixStats : "statsd";
+  prefixStats = config.prefixStats;
+  prefixStats = prefixStats !== undefined ? prefixStats : "statsd";
   //setup the names for the stats stored in counters{}
-  bad_lines_seen = prefixStats + ".bad_lines_seen";
+  bad_lines_seen   = prefixStats + ".bad_lines_seen";
   packets_received = prefixStats + ".packets_received";
 
   //now set to zero so we can increment them
-  counters[bad_lines_seen] = 0;
+  counters[bad_lines_seen]   = 0;
   counters[packets_received] = 0;
 
   if (server === undefined) {
@@ -138,12 +151,21 @@ config.configFile(process.argv[2], function (config, oldConfig) {
     // key counting
     var keyFlushInterval = Number((config.keyFlush && config.keyFlush.interval) || 0);
 
-    server = dgram.createSocket('udp4', function (msg, rinfo) {
+    var udp_version = config.address_ipv6 ? 'udp6' : 'udp4';
+    server = dgram.createSocket(udp_version, function (msg, rinfo) {
       backendEvents.emit('packet', msg, rinfo);
       counters[packets_received]++;
-      var metrics = msg.toString().split("\n");
+      var packet_data = msg.toString();
+      if (packet_data.indexOf("\n") > -1) {
+        var metrics = packet_data.split("\n");
+      } else {
+        var metrics = [ packet_data ] ;
+      }
 
       for (var midx in metrics) {
+        if (metrics[midx].length === 0) {
+          continue;
+        }
         if (config.dumpMessages) {
           l.log(metrics[midx].toString());
         }

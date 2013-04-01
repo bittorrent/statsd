@@ -46,7 +46,7 @@ module.exports = {
     test.done();
   },
   timers_single_time: function(test) {
-    test.expect(7);
+    test.expect(8);
     this.metrics.timers['a'] = [100];
     this.metrics.timer_counters['a'] = 1;
     pm.process_metrics(this.metrics, 100, this.time_stamp, function(){});
@@ -58,10 +58,11 @@ module.exports = {
     test.equal(10, timer_data.count_ps);
     test.equal(100, timer_data.sum);
     test.equal(100, timer_data.mean);
+    test.equal(100, timer_data.median);
     test.done();
   },
     timers_multiple_times: function(test) {
-    test.expect(7);
+    test.expect(8);
     this.metrics.timers['a'] = [100, 200, 300];
     this.metrics.timer_counters['a'] = 3;
     pm.process_metrics(this.metrics, 100, this.time_stamp, function(){});
@@ -73,6 +74,7 @@ module.exports = {
     test.equal(30, timer_data.count_ps);
     test.equal(600, timer_data.sum);
     test.equal(200, timer_data.mean);
+    test.equal(200, timer_data.median);
     test.done();
   },
     timers_single_time_single_percentile: function(test) {
@@ -184,11 +186,41 @@ module.exports = {
 
     test.done();
   },
+    timers_single_time_single_top_percentile: function(test) {
+    test.expect(3);
+    this.metrics.timers['a'] = [100];
+    this.metrics.pctThreshold = [-10];
+    pm.process_metrics(this.metrics, 100, this.time_stamp, function(){});
+    timer_data = this.metrics.timer_data['a'];
+    test.equal(100, timer_data.mean_top10);
+    test.equal(100, timer_data.lower_top10);
+    test.equal(100, timer_data.sum_top10);
+    test.done();
+  },
+    timers_multiple_times_single_top_percentile: function(test) {
+    test.expect(3);
+    this.metrics.timers['a'] = [10, 10, 10, 10, 10, 10, 10, 10, 100, 200];
+    this.metrics.pctThreshold = [-20];
+    pm.process_metrics(this.metrics, 100, this.time_stamp, function(){});
+    timer_data = this.metrics.timer_data['a'];
+    test.equal(150, timer_data.mean_top20);
+    test.equal(100, timer_data.lower_top20);
+    test.equal(300, timer_data.sum_top20);
+    test.done();
+  },
     statsd_metrics_exist: function(test) {
     test.expect(1);
     pm.process_metrics(this.metrics, 100, this.time_stamp, function(){});
     statsd_metrics = this.metrics.statsd_metrics;
     test.notEqual(undefined, statsd_metrics["processing_time"]);
+    test.done();
+  },
+    timers_multiple_times_even: function(test) {
+    test.expect(1);
+    this.metrics.timers['a'] = [300, 200, 400, 100];
+    pm.process_metrics(this.metrics, 100, this.time_stamp, function(){});
+    timer_data = this.metrics.timer_data['a'];
+    test.equal(250, timer_data.median);
     test.done();
   }
 }
