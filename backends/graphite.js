@@ -59,8 +59,8 @@ var flush_stats = function graphite_flush(ts, metrics) {
     var value = counters[key];
     var valuePerSecond = value / (flushInterval / 1000); // calculate "per second" rate
 
-    statString += 'stats.'        + key + ' ' + valuePerSecond + ' ' + ts + "\n";
-    statString += 'stats_counts.' + key + ' ' + value          + ' ' + ts + "\n";
+    statString += 'live.stats.'        + key + ' ' + valuePerSecond + ' ' + ts + "\n";
+    statString += 'live.stats_counts.' + key + ' ' + value          + ' ' + ts + "\n";
 
     numStats += 1;
   }
@@ -77,7 +77,7 @@ var flush_stats = function graphite_flush(ts, metrics) {
     numStats += 1;
   }
 
-  statString += 'statsd.numStats ' + numStats + ' ' + ts + "\n";
+  statString += 'live.statsd.numStats ' + numStats + ' ' + ts + "\n";
   post_stats(statString);
 };
 
@@ -138,13 +138,13 @@ function construct_averaged_message(ts, value_array, type_name, pctThreshold) {
 
         var clean_pct = '' + pct;
         clean_pct.replace('.', '_');
-        message += 'stats.' + type_name + '.' + key + '.mean_'  + clean_pct + ' ' + mean           + ' ' + ts + "\n";
-        message += 'stats.' + type_name + '.' + key + '.upper_' + clean_pct + ' ' + maxAtThreshold + ' ' + ts + "\n";
+        message += 'live.stats.' + type_name + '.' + key + '.mean_'  + clean_pct + ' ' + mean           + ' ' + ts + "\n";
+        message += 'live.stats.' + type_name + '.' + key + '.upper_' + clean_pct + ' ' + maxAtThreshold + ' ' + ts + "\n";
       }
 
-      message += 'stats.' + type_name + '.' + key + '.upper ' + max   + ' ' + ts + "\n";
-      message += 'stats.' + type_name + '.' + key + '.lower ' + min   + ' ' + ts + "\n";
-      message += 'stats.' + type_name + '.' + key + '.count ' + count + ' ' + ts + "\n";
+      message += 'live.stats.' + type_name + '.' + key + '.upper ' + max   + ' ' + ts + "\n";
+      message += 'live.stats.' + type_name + '.' + key + '.lower ' + min   + ' ' + ts + "\n";
+      message += 'live.stats.' + type_name + '.' + key + '.count ' + count + ' ' + ts + "\n";
     }
   }
   return message;
